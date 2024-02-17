@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import cors from "cors";
 import dotenv from "dotenv";
 
@@ -21,6 +21,38 @@ async function run() {
       const query = {};
       const phones = await phonesCollection.find(query).toArray();
       res.send(phones);
+    })
+
+    app.post('/api/v1/phone', async (req: Request, res: Response) => {
+      const phone = req.body;
+      const result = await phonesCollection.insertOne(phone);
+      res.status(201).send({ success: result.acknowledged, content: result, message: "Product Added successfully!" });
+    })
+
+    app.patch('/api/v1/phone/:id', async (req: Request, res: Response) => {
+      const id = req.params.id;
+      const phone = req.body;
+
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const updateUser = {
+          $set: {
+            ...phone
+          }
+        }
+        const result = await phonesCollection.updateOne(filter, updateUser);
+        res.status(200).send({ success: true, content: result, message: "Product Updated successfully!" });
+      }
+      catch (error) {
+        res.status(500).send('Internal Server Error!');
+      }
+    })
+
+    app.delete('/api/v1/phone/:id', async (req: Request, res: Response) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await phonesCollection.deleteOne(query);
+      res.status(200).send({ message: 'Product Deleted successfully!', success: true, content: result });
     })
 
   }
