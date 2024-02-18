@@ -141,7 +141,11 @@ async function run() {
         await phonesCollection.updateOne(filter, updatePhone);
 
         // Insert sale record into salesCollection
-        const sale = { ...req.body, productId: new ObjectId(productId) };
+        const sale = {
+          ...req.body,
+          productId: new ObjectId(productId),
+          dateSold: new Date(req.body.dateSold),
+        };
         const result = await salesCollection.insertOne(sale);
 
         res.status(201).send({ success: true, content: result, message: "Sale added successfully!" });
@@ -149,6 +153,59 @@ async function run() {
         console.error("Error processing sale:", error);
         res.status(500).send('Internal Server Error!');
       }
+    })
+
+    app.get('/api/v1/statistics/sales', verifyJWT, async (req: Request, res: Response) => {
+      let selectedDays = 1;
+
+      if (Number(req?.query?.days)) {
+        selectedDays = Number(req?.query?.days);
+      }
+      else if (req?.query?.currentMonth) {
+        selectedDays = new Date().getDate();
+      }
+      else if (req.query.currentWeek) {
+        selectedDays = new Date().getDay();
+      }
+
+      const daysAgo = new Date();
+      daysAgo.setDate(daysAgo.getDate() - selectedDays);
+
+      const pipeline = [
+        {
+          $match: {
+            dateSold: { $gte: daysAgo } // Filter documents created in the last selected days
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$dateSold" } }, // Group by day
+            totalAmountSold: { $sum: "$totalAmount" } // Compute sum of 'totalAmount' field for each day
+          }
+        }
+      ];
+      const result = await salesCollection.aggregate(pipeline).toArray();
+
+      // Create an array of last selected days
+      const latestDaysList = [];
+      const currentDate = new Date();
+      for (let i = 0; i < selectedDays; i++) {
+        const date = new Date(currentDate);
+        date.setDate(currentDate.getDate() - i);
+        latestDaysList.push(date.toISOString().slice(0, 10));
+      }
+
+      // Convert the result array to a Map for faster lookup
+      const resultMap = new Map(result.map(item => [item._id, item.totalAmountSold]));
+
+      // Left join the result with last 7 days array
+      const finalResult = latestDaysList.map(day => ({
+        date: day,
+        totalAmountSold: resultMap.get(day) || 0, // Get totalAmount from resultMap, default to 0 if not found
+      }));
+
+      // Return the final result
+      res.status(201).send({ success: true, content: finalResult, message: "Data Found!" });
     })
 
   }
