@@ -35,6 +35,8 @@ async function run() {
     const phonesCollection = database.collection('phones');
     const salesCollection = database.collection('sales');
 
+
+    // Auth
     app.post('/api/v1/auth/register', async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
@@ -49,7 +51,7 @@ async function run() {
 
       if (result.acknowledged) {
         const insertedUser = await usersCollection.findOne({ _id: result.insertedId });
-        res.status(200).send({ message: 'Registered successfully', content: insertedUser, success: true });
+        res.status(201).send({ message: 'Registered successfully', content: insertedUser, success: true });
       } else {
         res.status(409).send({ message: 'Failed to register user', success: false });
       }
@@ -77,10 +79,12 @@ async function run() {
       res.status(200).send({ message: 'Logged in successfully', success: true, content: responseUser });
     })
 
+
+    // Products
     app.get('/api/v1/phones', verifyJWT, async (req: Request, res: Response) => {
       const query = {};
       const phones = await phonesCollection.find(query).toArray();
-      res.send(phones);
+      res.status(200).send({ success: true, content: phones, message: "Data Found!" });
     })
 
     app.post('/api/v1/phone', verifyJWT, async (req: Request, res: Response) => {
@@ -115,6 +119,55 @@ async function run() {
       res.status(200).send({ message: 'Product Deleted successfully!', success: true, content: result });
     })
 
+
+    // Sales
+    app.get('/api/v1/sales', async (req: Request, res: Response) => {
+      let query = {};
+
+      if (req.query.days) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - Number(req.query.days));
+        daysAgo.setHours(0, 0, 0, 0);
+        query = { dateSold: { $gte: daysAgo } }
+      }
+
+      const sales = await salesCollection.aggregate([
+        {
+          $match: query
+        },
+        {
+          $lookup: {
+            from: "phones",
+            localField: "productId",
+            foreignField: "_id",
+            as: "product"
+          }
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "sellerId",
+            foreignField: "_id",
+            as: "seller"
+          }
+        },
+        {
+          $unwind: { path: "$product", preserveNullAndEmptyArrays: true }
+        },
+        {
+          $unwind: "$seller",
+        },
+        {
+          $sort: { _id: -1 }
+        },
+        {
+          $project: { seller: { password: 0 } }
+        }
+      ]).toArray();
+
+      res.status(200).send({ success: true, content: sales, message: "Data Found!" });
+    })
+
     app.post('/api/v1/sale', verifyJWT, async (req: Request, res: Response) => {
       try {
         const { productId, quantitySold } = req.body;
@@ -145,6 +198,7 @@ async function run() {
           ...req.body,
           productId: new ObjectId(productId),
           dateSold: new Date(req.body.dateSold),
+          sellerId: new ObjectId(req.body.sellerId),
         };
         const result = await salesCollection.insertOne(sale);
 
@@ -155,6 +209,8 @@ async function run() {
       }
     })
 
+
+    // Statistics
     app.get('/api/v1/statistics/sales', verifyJWT, async (req: Request, res: Response) => {
       let selectedDays = 1;
 
@@ -171,7 +227,7 @@ async function run() {
       const daysAgo = new Date();
       daysAgo.setDate(daysAgo.getDate() - selectedDays);
 
-      const pipeline = [
+      const result = await salesCollection.aggregate([
         {
           $match: {
             dateSold: { $gte: daysAgo } // Filter documents created in the last selected days
@@ -183,8 +239,7 @@ async function run() {
             totalAmountSold: { $sum: "$totalAmount" } // Compute sum of 'totalAmount' field for each day
           }
         }
-      ];
-      const result = await salesCollection.aggregate(pipeline).toArray();
+      ]).toArray();
 
       // Create an array of last selected days
       const latestDaysList = [];
@@ -205,7 +260,7 @@ async function run() {
       }));
 
       // Return the final result
-      res.status(201).send({ success: true, content: finalResult, message: "Data Found!" });
+      res.status(200).send({ success: true, content: finalResult, message: "Data Found!" });
     })
 
   }
