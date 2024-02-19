@@ -89,8 +89,17 @@ async function run() {
 
     app.post('/api/v1/phone', verifyJWT, async (req: Request, res: Response) => {
       const phone = req.body;
-      const result = await phonesCollection.insertOne(phone);
-      res.status(201).send({ success: result.acknowledged, content: result, message: "Product Added successfully!" });
+      try {
+        const result = await phonesCollection.insertOne(phone);
+        res.status(201).send({ success: result.acknowledged, content: result, message: "Product Added successfully!" });
+      }
+      catch (error) {
+        if ((error as any).code === 11000) {
+          res.status(409).send({ message: 'Product name already exists!', success: false });
+        } else {
+          res.status(500).send('Internal Server Error!');
+        }
+      }
     })
 
     app.patch('/api/v1/phone/:id', verifyJWT, async (req: Request, res: Response) => {
@@ -108,7 +117,11 @@ async function run() {
         res.status(200).send({ success: true, content: result, message: "Product Updated successfully!" });
       }
       catch (error) {
-        res.status(500).send('Internal Server Error!');
+        if ((error as any).code === 11000) {
+          res.status(409).send({ message: 'Product name already exists!', success: false });
+        } else {
+          res.status(500).send('Internal Server Error!');
+        }
       }
     })
 
