@@ -90,7 +90,7 @@ async function run() {
     app.post('/api/v1/phone', verifyJWT, async (req: Request, res: Response) => {
       const phone = req.body;
       try {
-        const result = await phonesCollection.insertOne(phone);
+        const result = await phonesCollection.insertOne({ ...phone, sold: 0, status: true });
         res.status(201).send({ success: result.acknowledged, content: result, message: "Product Added successfully!" });
       }
       catch (error) {
@@ -132,9 +132,23 @@ async function run() {
       res.status(200).send({ message: 'Product Deleted successfully!', success: true, content: result });
     })
 
+    app.delete('/api/v1/phones', verifyJWT, async (req: Request, res: Response) => {
+      const ids = req?.query?.ids;
+      const mappedIds = (ids as string)?.split(",").map(id => new ObjectId(id));
+
+      if (mappedIds.length < 1) {
+        res.status(409).send({ message: 'Product not found!', success: false });
+        return;
+      }
+
+      const query = { _id: { $in: mappedIds } };
+      const result = await phonesCollection.deleteMany(query);
+      res.status(200).send({ message: 'Products Deleted successfully!', success: true, content: result });
+    })
+
 
     // Sales
-    app.get('/api/v1/sales', async (req: Request, res: Response) => {
+    app.get('/api/v1/sales', verifyJWT, async (req: Request, res: Response) => {
       let query = {};
 
       if (req.query.days) {
