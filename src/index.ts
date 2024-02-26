@@ -56,7 +56,12 @@ async function run() {
       }
 
       const hashedPassword = await bcrypt.hash(user.password, Number(process.env.BCRYPT_SALT_ROUNDS));
-      const result = await usersCollection.insertOne({ ...user, password: hashedPassword, role: "user" });
+      const result = await usersCollection.insertOne({
+        ...user,
+        password: hashedPassword,
+        role: "user",
+        status: true,
+      });
 
       if (result.acknowledged) {
         const insertedUser = await usersCollection.findOne({ _id: result.insertedId });
@@ -83,9 +88,36 @@ async function run() {
 
       const { _id, name, email, role } = user;
       const token = jwt.sign({ email }, process.env.JWT_SECRET as string, { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN });
-      const responseUser = { userId: _id, name, email, role, token };
+      const responseUser = { _id, name, email, role, token };
 
       res.status(200).send({ success: true, message: 'Logged in successfully', content: responseUser });
+    })
+
+
+    // Users
+    app.get('/api/v1/users', verifyJWT, async (req: Request, res: Response) => {
+      const query = {};
+      const users = await usersCollection.find(query).toArray();
+      res.status(200).send({ success: true, message: "Users Data Found!", content: users });
+    })
+
+    app.patch('/api/v1/user/:id', verifyJWT, async (req: Request, res: Response) => {
+      const id = req.params.id;
+      const user = req.body;
+
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const updateUser = {
+          $set: {
+            ...user
+          }
+        }
+        const result = await usersCollection.updateOne(filter, updateUser);
+        res.status(200).send({ success: true, message: "User Updated successfully!", content: result });
+      }
+      catch (error) {
+        res.status(500).send({ success: false, message: 'Internal Server Error!' });
+      }
     })
 
 
@@ -123,7 +155,7 @@ async function run() {
           }
         }
         const result = await productsCollection.updateOne(filter, updateUser);
-        res.status(200).send({ success: true, message: "Product Updated successfully!", content: result, });
+        res.status(200).send({ success: true, message: "Product Updated successfully!", content: result });
       }
       catch (error) {
         if ((error as any).code === 11000) {
