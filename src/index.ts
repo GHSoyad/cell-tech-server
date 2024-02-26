@@ -4,6 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from 'bcrypt';
+import moment from "moment";
 
 const port = process.env.PORT || 5000;
 const app = express();
@@ -11,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 dotenv.config();
 const client = new MongoClient(process.env.DB_URL || "");
+
 
 const verifyJWT = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -32,9 +34,16 @@ async function run() {
   try {
     const database = client.db(process.env.DB_NAME);
     const usersCollection = database.collection('users');
-    const phonesCollection = database.collection('phones');
+    const productsCollection = database.collection('products');
     const salesCollection = database.collection('sales');
 
+
+    // Updater
+    // app.get('/updater', (req, res) => {
+    //   res.send('Welcome to Updater!')
+    //   const result = productsCollection.rename("products")
+    //   res.status(201).send({success: true message: 'Updated successfully', content: result });
+    // })
 
     // Auth
     app.post('/api/v1/auth/register', async (req, res) => {
@@ -42,7 +51,7 @@ async function run() {
       const query = { email: user.email };
       const userExists = await usersCollection.findOne(query);
       if (userExists) {
-        res.status(409).send({ message: 'Already Registered with this Email!', success: false })
+        res.status(409).send({ success: false, message: 'Already Registered with this Email!' })
         return;
       }
 
@@ -51,9 +60,9 @@ async function run() {
 
       if (result.acknowledged) {
         const insertedUser = await usersCollection.findOne({ _id: result.insertedId });
-        res.status(201).send({ message: 'Registered successfully', content: insertedUser, success: true });
+        res.status(201).send({ success: true, message: 'Registered successfully', content: insertedUser });
       } else {
-        res.status(409).send({ message: 'Failed to register user', success: false });
+        res.status(409).send({ success: false, message: 'Failed to register user' });
       }
     });
 
@@ -63,12 +72,12 @@ async function run() {
       const user = await usersCollection.findOne(query);
 
       if (!user) {
-        res.status(409).send({ message: 'User not found!', success: false })
+        res.status(409).send({ success: false, message: 'User not found!' })
         return;
       }
       const isPasswordMatched = await bcrypt.compare(payload.password, user.password);
       if (!isPasswordMatched) {
-        res.status(409).send({ message: 'Password is wrong!', success: false })
+        res.status(409).send({ success: false, message: 'Password is wrong!' })
         return;
       }
 
@@ -76,63 +85,63 @@ async function run() {
       const token = jwt.sign({ email }, process.env.JWT_SECRET as string, { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN });
       const responseUser = { userId: _id, name, email, role, token };
 
-      res.status(200).send({ message: 'Logged in successfully', success: true, content: responseUser });
+      res.status(200).send({ success: true, message: 'Logged in successfully', content: responseUser });
     })
 
 
     // Products
-    app.get('/api/v1/phones', verifyJWT, async (req: Request, res: Response) => {
+    app.get('/api/v1/products', verifyJWT, async (req: Request, res: Response) => {
       const query = {};
-      const phones = await phonesCollection.find(query).toArray();
-      res.status(200).send({ success: true, content: phones, message: "Data Found!" });
+      const products = await productsCollection.find(query).toArray();
+      res.status(200).send({ success: true, message: "Data Found!", content: products });
     })
 
-    app.post('/api/v1/phone', verifyJWT, async (req: Request, res: Response) => {
-      const phone = req.body;
+    app.post('/api/v1/product', verifyJWT, async (req: Request, res: Response) => {
+      const product = req.body;
       try {
-        const result = await phonesCollection.insertOne({ ...phone, sold: 0, status: true });
-        res.status(201).send({ success: result.acknowledged, content: result, message: "Product Added successfully!" });
+        const result = await productsCollection.insertOne({ ...product, sold: 0, status: true });
+        res.status(201).send({ success: result.acknowledged, message: "Product Added successfully!", content: result });
       }
       catch (error) {
         if ((error as any).code === 11000) {
-          res.status(409).send({ message: 'Product name already exists!', success: false });
+          res.status(409).send({ success: false, message: 'Product name already exists!' });
         } else {
-          res.status(500).send('Internal Server Error!');
+          res.status(500).send({ success: false, message: 'Internal Server Error!' });
         }
       }
     })
 
-    app.patch('/api/v1/phone/:id', verifyJWT, async (req: Request, res: Response) => {
+    app.patch('/api/v1/product/:id', verifyJWT, async (req: Request, res: Response) => {
       const id = req.params.id;
-      const phone = req.body;
+      const product = req.body;
 
       try {
         const filter = { _id: new ObjectId(id) };
         const updateUser = {
           $set: {
-            ...phone
+            ...product
           }
         }
-        const result = await phonesCollection.updateOne(filter, updateUser);
-        res.status(200).send({ success: true, content: result, message: "Product Updated successfully!" });
+        const result = await productsCollection.updateOne(filter, updateUser);
+        res.status(200).send({ success: true, message: "Product Updated successfully!", content: result, });
       }
       catch (error) {
         if ((error as any).code === 11000) {
-          res.status(409).send({ message: 'Product name already exists!', success: false });
+          res.status(409).send({ success: false, message: 'Product name already exists!' });
         } else {
-          res.status(500).send('Internal Server Error!');
+          res.status(500).send({ success: false, message: 'Internal Server Error!' });
         }
       }
     })
 
-    app.delete('/api/v1/phone/:id', verifyJWT, async (req: Request, res: Response) => {
+    app.delete('/api/v1/product/:id', verifyJWT, async (req: Request, res: Response) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await phonesCollection.deleteOne(query);
-      res.status(200).send({ message: 'Product Deleted successfully!', success: true, content: result });
+      const result = await productsCollection.deleteOne(query);
+      res.status(200).send({ success: true, message: 'Product Deleted successfully!', content: result });
     })
 
-    app.delete('/api/v1/phones', verifyJWT, async (req: Request, res: Response) => {
+    app.delete('/api/v1/products', verifyJWT, async (req: Request, res: Response) => {
       const ids = req?.query?.ids;
       const mappedIds = (ids as string)?.split(",").map(id => new ObjectId(id));
 
@@ -142,21 +151,31 @@ async function run() {
       }
 
       const query = { _id: { $in: mappedIds } };
-      const result = await phonesCollection.deleteMany(query);
-      res.status(200).send({ message: 'Products Deleted successfully!', success: true, content: result });
+      const result = await productsCollection.deleteMany(query);
+      res.status(200).send({ success: true, message: 'Products Deleted successfully!', content: result });
     })
 
 
     // Sales
     app.get('/api/v1/sales', verifyJWT, async (req: Request, res: Response) => {
-      let query = {};
+      let selectedDays = 1;
+      const { currentYear, currentMonth, currentWeek, days } = req.query;
 
-      if (req.query.days) {
-        const daysAgo = new Date();
-        daysAgo.setDate(daysAgo.getDate() - Number(req.query.days));
-        daysAgo.setHours(0, 0, 0, 0);
-        query = { dateSold: { $gte: daysAgo } }
+      if (Number(days) > 0) {
+        selectedDays = Number(days);
       }
+      else if (Number(currentYear) > 0) {
+        selectedDays = moment().dayOfYear();
+      }
+      else if (Number(currentMonth) > 0) {
+        selectedDays = moment().date();
+      }
+      else if (Number(currentWeek) > 0) {
+        selectedDays = moment().day();
+      }
+
+      const daysAgo = moment().subtract(selectedDays, 'days').startOf('day');
+      const query = { dateSold: { $gte: daysAgo.toDate() } }
 
       const sales = await salesCollection.aggregate([
         {
@@ -164,7 +183,7 @@ async function run() {
         },
         {
           $lookup: {
-            from: "phones",
+            from: "products",
             localField: "productId",
             foreignField: "_id",
             as: "product"
@@ -192,33 +211,33 @@ async function run() {
         }
       ]).toArray();
 
-      res.status(200).send({ success: true, content: sales, message: "Data Found!" });
+      res.status(200).send({ success: true, message: "Data Found!", content: sales });
     })
 
     app.post('/api/v1/sale', verifyJWT, async (req: Request, res: Response) => {
       try {
         const { productId, quantitySold } = req.body;
 
-        const phone = await phonesCollection.findOne({ _id: new ObjectId(productId) });
+        const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
 
-        if (!phone) {
-          return res.status(404).send({ success: false, message: "Phone not found!" });
+        if (!product) {
+          return res.status(409).send({ success: false, message: "Product not found!" });
         }
-        if (quantitySold > phone.stock) {
-          return res.status(400).send({ success: false, message: "Quantity sold is more than available stock!" });
+        if (quantitySold > product.stock) {
+          return res.status(409).send({ success: false, message: "Quantity sold is more than available stock!" });
         }
 
-        const newStock = phone.stock - quantitySold;
+        const newStock = product.stock - quantitySold;
 
         const filter = { _id: new ObjectId(productId) };
-        const updatePhone = {
+        const updateProduct = {
           $set: {
             stock: newStock,
-            sold: phone.sold + quantitySold,
+            sold: product.sold + quantitySold,
             status: newStock > 0
           }
         };
-        await phonesCollection.updateOne(filter, updatePhone);
+        await productsCollection.updateOne(filter, updateProduct);
 
         // Insert sale record into salesCollection
         const sale = {
@@ -229,10 +248,9 @@ async function run() {
         };
         const result = await salesCollection.insertOne(sale);
 
-        res.status(201).send({ success: true, content: result, message: "Sale added successfully!" });
+        res.status(201).send({ success: true, message: "Sale added successfully!", content: result });
       } catch (error) {
-        console.error("Error processing sale:", error);
-        res.status(500).send('Internal Server Error!');
+        res.status(500).send({ success: false, message: 'Internal Server Error!' });
       }
     })
 
@@ -241,53 +259,51 @@ async function run() {
     app.get('/api/v1/statistics/sales', verifyJWT, async (req: Request, res: Response) => {
       let selectedDays = 1;
 
-      if (Number(req?.query?.days)) {
-        selectedDays = Number(req?.query?.days);
+      const { currentYear, currentMonth, currentWeek, days } = req.query;
+
+      if (Number(days) > 0) {
+        selectedDays = Number(days);
       }
-      else if (req?.query?.currentMonth) {
-        selectedDays = new Date().getDate();
+      else if (Number(currentYear) > 0) {
+        selectedDays = moment().dayOfYear();
       }
-      else if (req.query.currentWeek) {
-        selectedDays = new Date().getDay();
+      else if (Number(currentMonth) > 0) {
+        selectedDays = moment().date();
+      }
+      else if (Number(currentWeek) > 0) {
+        selectedDays = moment().day();
       }
 
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - selectedDays);
+      const daysAgo = moment().subtract(selectedDays, 'days').startOf('day');
 
       const result = await salesCollection.aggregate([
         {
           $match: {
-            dateSold: { $gte: daysAgo } // Filter documents created in the last selected days
+            dateSold: { $gte: daysAgo.toDate() }
           }
         },
         {
           $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$dateSold" } }, // Group by day
-            totalAmountSold: { $sum: "$totalAmount" } // Compute sum of 'totalAmount' field for each day
+            _id: { $dateToString: { format: "%d-%m-%Y", date: "$dateSold" } }, // Group by day
+            totalAmountSold: { $sum: "$totalAmount" }
           }
         }
       ]).toArray();
 
-      // Create an array of last selected days
-      const latestDaysList = [];
-      const currentDate = new Date();
-      for (let i = 0; i < selectedDays; i++) {
-        const date = new Date(currentDate);
-        date.setDate(currentDate.getDate() - i);
-        latestDaysList.push(date.toISOString().slice(0, 10));
-      }
+      const latestDaysList = Array.from({ length: selectedDays }, (_, i) =>
+        moment().subtract(i, 'days').format('DD-MM-YYYY')
+      );
 
-      // Convert the result array to a Map for faster lookup
-      const resultMap = new Map(result.map(item => [item._id, item.totalAmountSold]));
+      const resultMap = new Map(result.map(item => [item?._id, item?.totalAmountSold]));
 
-      // Left join the result with last 7 days array
       const finalResult = latestDaysList.map(day => ({
         date: day,
-        totalAmountSold: resultMap.get(day) || 0, // Get totalAmount from resultMap, default to 0 if not found
+        day: moment(day, "DD-MM-YYYY").format("dddd"),
+        totalAmountSold: resultMap.get(day) || 0
       }));
 
       // Return the final result
-      res.status(200).send({ success: true, content: finalResult, message: "Data Found!" });
+      res.status(200).send({ success: true, message: "Data Found!", content: finalResult });
     })
 
   }
