@@ -191,7 +191,8 @@ async function run() {
     // Sales
     app.get('/api/v1/sales', verifyJWT, async (req: Request, res: Response) => {
       let selectedDays = 1;
-      const { currentYear, currentMonth, currentWeek, days } = req.query;
+      const { currentYear, currentMonth, currentWeek, days, userId } = req.query;
+      const matchStage: any = {};
 
       if (Number(days) > 0) {
         selectedDays = Number(days);
@@ -205,13 +206,16 @@ async function run() {
       else if (Number(currentWeek) > 0) {
         selectedDays = moment().day();
       }
+      if (userId) {
+        matchStage.sellerId = new ObjectId(userId as string);
+      }
 
       const daysAgo = moment().subtract(selectedDays, 'days').startOf('day');
-      const query = { dateSold: { $gte: daysAgo.toDate() } }
+      matchStage.dateSold = { $gte: daysAgo.toDate() }
 
       const sales = await salesCollection.aggregate([
         {
-          $match: query
+          $match: matchStage,
         },
         {
           $lookup: {
@@ -291,7 +295,8 @@ async function run() {
     app.get('/api/v1/statistics/sales', verifyJWT, async (req: Request, res: Response) => {
       let selectedDays = 1;
 
-      const { currentYear, currentMonth, currentWeek, days } = req.query;
+      const { currentYear, currentMonth, currentWeek, days, userId } = req.query;
+      const matchStage: any = {};
 
       if (Number(days) > 0) {
         selectedDays = Number(days);
@@ -305,14 +310,16 @@ async function run() {
       else if (Number(currentWeek) > 0) {
         selectedDays = moment().day();
       }
+      if (userId) {
+        matchStage.sellerId = new ObjectId(userId as string);
+      }
 
       const daysAgo = moment().subtract(selectedDays, 'days').startOf('day');
+      matchStage.dateSold = { $gte: daysAgo.toDate() }
 
       const result = await salesCollection.aggregate([
         {
-          $match: {
-            dateSold: { $gte: daysAgo.toDate() }
-          }
+          $match: matchStage,
         },
         {
           $group: {
