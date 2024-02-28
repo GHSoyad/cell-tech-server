@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from 'bcrypt';
 import moment from "moment";
+import { statisticsMatcher } from "./utils/statisticsMatcher";
 
 const port = process.env.PORT || 5000;
 const app = express();
@@ -292,30 +293,8 @@ async function run() {
 
 
     // Statistics
-    app.get('/api/v1/statistics/sales', verifyJWT, async (req: Request, res: Response) => {
-      let selectedDays = 1;
-
-      const { currentYear, currentMonth, currentWeek, days, userId } = req.query;
-      const matchStage: any = {};
-
-      if (Number(days) > 0) {
-        selectedDays = Number(days);
-      }
-      else if (Number(currentYear) > 0) {
-        selectedDays = moment().dayOfYear();
-      }
-      else if (Number(currentMonth) > 0) {
-        selectedDays = moment().date();
-      }
-      else if (Number(currentWeek) > 0) {
-        selectedDays = moment().day();
-      }
-      if (userId) {
-        matchStage.sellerId = new ObjectId(userId as string);
-      }
-
-      const daysAgo = moment().subtract(selectedDays, 'days').startOf('day');
-      matchStage.dateSold = { $gte: daysAgo.toDate() }
+    app.get('/api/v1/statistics/sales-by-amount', verifyJWT, async (req: Request, res: Response) => {
+      const [matchStage, selectedDays] = statisticsMatcher(req);
 
       const result = await salesCollection.aggregate([
         {
@@ -343,6 +322,78 @@ async function run() {
 
       // Return the final result
       res.status(200).send({ success: true, message: "Data Found!", content: finalResult });
+    })
+
+    app.get('/api/v1/statistics/sales-by-product', verifyJWT, async (req: Request, res: Response) => {
+      const [matchStage] = statisticsMatcher(req);
+
+      const result = await salesCollection.aggregate([
+        {
+          $match: matchStage,
+        },
+        {
+          $group: {
+            _id: "$productId", // Group by product
+            quantitySold: { $sum: "$quantitySold" }
+          }
+        },
+        {
+          $lookup: {
+            from: "products",
+            localField: "_id",
+            foreignField: "_id",
+            as: "product"
+          }
+        },
+        {
+          $unwind: "$product"
+        },
+        {
+          $project: { product: "$product.name", quantitySold: 1 }
+        },
+        {
+          $sort: { quantitySold: -1 }
+        }
+      ]).toArray();
+
+      // Return the final result
+      res.status(200).send({ success: true, message: "Data Found!", content: result });
+    })
+
+    app.get('/api/v1/statistics/sales-by-user', verifyJWT, async (req: Request, res: Response) => {
+      const [matchStage] = statisticsMatcher(req);
+
+      const result = await salesCollection.aggregate([
+        {
+          $match: matchStage,
+        },
+        {
+          $group: {
+            _id: "$sellerId", // Group by product
+            quantitySold: { $sum: "$quantitySold" }
+          }
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "user"
+          }
+        },
+        {
+          $unwind: "$user"
+        },
+        {
+          $project: { user: "$user.name", quantitySold: 1 }
+        },
+        {
+          $sort: { quantitySold: -1 }
+        }
+      ]).toArray();
+
+      // Return the final result
+      res.status(200).send({ success: true, message: "Data Found!", content: result });
     })
 
   }
